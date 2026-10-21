@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Clasificador de tumores de mama</title>
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 720px; margin: 30px auto; padding: 0 16px; color: #222; }
+    h1 { font-size: 1.6rem; }
+    fieldset { margin-bottom: 16px; }
+    .campos { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; }
+    label { display: block; font-size: 0.9rem; }
+    input { width: 100%; padding: 6px; box-sizing: border-box; }
+    button { padding: 8px 14px; margin-right: 6px; cursor: pointer; }
+    #resultado { margin-top: 20px; padding: 14px; border: 1px solid #999; border-radius: 4px; }
+    #resultado.benigno { background: #e6f4ea; border-color: #2e7d32; }
+    #resultado.maligno { background: #fdeaea; border-color: #c62828; }
+    #resultado.error { background: #fff8e1; border-color: #f9a825; }
+    .aviso { font-size: 0.85rem; color: #666; }
+  </style>
+</head>
+<body>
+  <h1>Clasificador de tumores de mama</h1>
+  <p>Escribe las 10 medidas de la muestra y pulsa "Predecir". También puedes cargar un caso de ejemplo.</p>
+
+  <form id="formulario" novalidate>
+    <fieldset>
+      <legend>Valor peor de la muestra</legend>
+      <div class="campos">
+        <label>Puntos cóncavos (worst concave points)
+          <input type="number" step="any" min="0" id="worst_concave_points"></label>
+        <label>Concavidad (worst concavity)
+          <input type="number" step="any" min="0" id="worst_concavity"></label>
+        <label>Perímetro (worst perimeter)
+          <input type="number" step="any" min="0" id="worst_perimeter"></label>
+        <label>Radio (worst radius)
+          <input type="number" step="any" min="0" id="worst_radius"></label>
+        <label>Área (worst area)
+          <input type="number" step="any" min="0" id="worst_area"></label>
+        <label>Textura (worst texture)
+          <input type="number" step="any" min="0" id="worst_texture"></label>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Valor promedio de la muestra</legend>
+      <div class="campos">
+        <label>Puntos cóncavos (mean concave points)
+          <input type="number" step="any" min="0" id="mean_concave_points"></label>
+        <label>Concavidad (mean concavity)
+          <input type="number" step="any" min="0" id="mean_concavity"></label>
+        <label>Perímetro (mean perimeter)
+          <input type="number" step="any" min="0" id="mean_perimeter"></label>
+        <label>Área (mean area)
+          <input type="number" step="any" min="0" id="mean_area"></label>
+      </div>
+    </fieldset>
+
+    <button type="submit" id="btn-predecir">Predecir</button>
+    <button type="button" id="btn-benigno">Cargar caso benigno</button>
+    <button type="button" id="btn-maligno">Cargar caso maligno</button>
+    <button type="button" id="btn-limpiar">Limpiar</button>
+  </form>
+
+  <div id="resultado">Aquí aparecerá el resultado.</div>
+  <p class="aviso">Proyecto académico. No sustituye un diagnóstico médico.</p>
+
+  <script>
+    const campos = [
+      "worst_concave_points", "worst_perimeter", "worst_radius", "worst_area",
+      "mean_concavity", "mean_concave_points", "worst_texture",
+      "mean_perimeter", "mean_area", "worst_concavity"
+    ];
+
+    // Dos muestras reales del dataset de Wisconsin
+    const ejemplos = {
+      maligno: {
+        worst_concave_points: 0.2654, worst_perimeter: 184.6, worst_radius: 25.38,
+        worst_area: 2019, mean_concavity: 0.3001, mean_concave_points: 0.1471,
+        worst_texture: 17.33, mean_perimeter: 122.8, mean_area: 1001, worst_concavity: 0.7119
+      },
+      benigno: {
+        worst_concave_points: 0.0728, worst_perimeter: 96.09, worst_radius: 14.5,
+        worst_area: 630.5, mean_concavity: 0.0457, mean_concave_points: 0.0311,
+        worst_texture: 20.49, mean_perimeter: 85.63, mean_area: 520, worst_concavity: 0.189
+      }
+    };
+
+    const resultado = document.getElementById("resultado");
+    const boton = document.getElementById("btn-predecir");
+
+    function mostrar(clase, titulo, detalle) {
+      resultado.className = clase;
+      resultado.innerHTML = "<strong>" + titulo + "</strong><br>" + detalle;
+    }
+
+    function reiniciar() {
+      resultado.className = "";
+      resultado.textContent = "Aquí aparecerá el resultado.";
+    }
+
+    function cargar(valores) {
+      for (const c of campos) document.getElementById(c).value = valores[c];
+      reiniciar();
+    }
+
+    document.getElementById("btn-maligno").onclick = () => cargar(ejemplos.maligno);
+    document.getElementById("btn-benigno").onclick = () => cargar(ejemplos.benigno);
+    document.getElementById("btn-limpiar").onclick = () => {
+      document.getElementById("formulario").reset();
+      reiniciar();
+    };
+
+    document.getElementById("formulario").onsubmit = async function (e) {
+      e.preventDefault();  // impide que el navegador recargue la página al enviar
+
+      const datos = {};
+      for (const c of campos) {
+        const valor = document.getElementById(c).value;
+        if (valor === "") {
+          mostrar("error", "Faltan datos", "Completa los 10 campos o carga un caso de ejemplo.");
+          return;
+        }
+        datos[c] = parseFloat(valor);
+      }
+
+      boton.disabled = true;
+      try {
+        const respuesta = await fetch("/predict", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(datos)
+        });
+        if (!respuesta.ok) {
+          mostrar("error", "Valores no válidos",
+                  "Deben ser números no negativos, y el área, el radio, el perímetro y la textura mayores que 0.");
+          return;
+        }
+        const r = await respuesta.json();
+        mostrar(r.diagnostico.toLowerCase(), "Diagnóstico: " + r.diagnostico,
+                r.votos + " de 10 medidas superan su mediana. Umbral θ = " + r.theta + ".");
+      } catch (err) {
+        mostrar("error", "Sin conexión", "No se pudo contactar al servidor. Verifica que uvicorn esté encendido.");
+      } finally {
+        boton.disabled = false;
+      }
+    };
+  </script>
+</body>
+</html>
